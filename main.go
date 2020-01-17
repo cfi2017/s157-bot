@@ -8,14 +8,16 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Necroforger/dgwidgets"
 	"github.com/bwmarrin/discordgo"
 )
 
 const (
-	MEMBER_ROLE_ID = ""
-	LEADER_ROLE_ID = ""
+	MEMBER_ROLE_ID    = "667160643014492182"
+	LEADER_ROLE_ID    = "666371711616417836"
+	COMMODORE_ROLE_ID = "666737950985420802"
 )
 
 var (
@@ -40,7 +42,6 @@ func main() {
 	// add handlers
 	session.AddHandlerOnce(onReady)
 	session.AddHandler(onMessageCreate)
-	session.AddHandler(onGuildJoin)
 	session.AddHandler(onGuildLeave)
 
 	// open websocket
@@ -63,7 +64,12 @@ func main() {
 func onReady(s *discordgo.Session, event *discordgo.Ready) {
 
 	// Set the playing status.
-	s.UpdateStatus(0, "!startrek")
+	session.UpdateStatusComplex(discordgo.UpdateStatusData{
+		Game: &discordgo.Game{
+			Name: "!alliance",
+			Type: 2,
+		},
+	})
 }
 
 func onMessageCreate(s *discordgo.Session, event *discordgo.MessageCreate) {
@@ -95,40 +101,12 @@ func onMessageCreate(s *discordgo.Session, event *discordgo.MessageCreate) {
 
 }
 
-func onGuildJoin(s *discordgo.Session, event *discordgo.GuildMemberAdd) {
-	if s.State.User.ID == event.User.ID {
-		// self join
-		g, err := s.Guild(event.GuildID)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		ch, err := s.UserChannelCreate(g.OwnerID)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		_, err = s.ChannelMessageSend(ch.ID, "Hello. To set up, please make sure the bot has access to a private, empty text channel called #role-bot.")
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}
-}
-
 func onGuildLeave(s *discordgo.Session, event *discordgo.GuildMemberRemove) {
 	if event.Roles != nil {
 		if HasRole(event.Member, LEADER_ROLE_ID) {
 			// todo: send message to admins
 		}
 	}
-}
-
-type PendingRequest struct {
-	ChannelID   string // the channel id of the leader being prompted
-	MessageID   string // the message containing the prompt
-	LeaderID    string // the leader being prompted
-	RequesterID string // the requester prompting someone to accept them into the guild
 }
 
 func sendMessage(channelId string, message string) {
@@ -160,7 +138,7 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 		break
 	case "promote":
 		if len(args) != 2 {
-			sendMessage(event.ChannelID, "Please specify your successor.")
+			sendMessage(event.ChannelID, "Please mention who you want to promote.")
 			return
 		}
 		promote(event, args[1])
@@ -196,7 +174,7 @@ func promote(event *discordgo.MessageCreate, s string) {
 	}
 
 	if len(event.Mentions) != 1 {
-		sendMessage(event.ChannelID, "Please mention exactly one successor.")
+		sendMessage(event.ChannelID, "Please mention exactly one user.")
 		return
 	}
 
@@ -213,9 +191,33 @@ func promote(event *discordgo.MessageCreate, s string) {
 		return
 	}
 
-	session.GuildMemberRoleAdd(event.GuildID, event.Mentions[0].ID, LEADER_ROLE_ID)
-	session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, LEADER_ROLE_ID)
-	sendMessage(event.ChannelID, "Done.")
+	if HasRole(targetMember, COMMODORE_ROLE_ID) {
+
+		e := &discordgo.MessageEmbed{
+			Title:       "Authorising...",
+			Description: fmt.Sprintf("Are you sure you want to make %s your successor?", targetMember.Nick),
+		}
+
+		w := dgwidgets.NewWidget(session, event.ChannelID, e)
+		w.DeleteReactions = true
+		w.Timeout = time.Minute
+		w.UserWhitelist = []string{event.Author.ID}
+		w.Handle("✅", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+			// adding new user to alliance
+			session.GuildMemberRoleAdd(event.GuildID, event.Mentions[0].ID, LEADER_ROLE_ID)
+			session.GuildMemberRoleRemove(event.GuildID, event.Mentions[0].ID, COMMODORE_ROLE_ID)
+			session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, LEADER_ROLE_ID)
+			sendMessage(event.ChannelID, fmt.Sprintf("Made %s the new alliance leader.", targetMember.Nick))
+		})
+		w.Handle("", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+			session.ChannelMessageDelete(reaction.ChannelID, reaction.MessageID)
+			sendMessage(event.ChannelID, "Cancelled that.")
+		})
+		w.Spawn()
+	} else {
+		session.GuildMemberRoleAdd(event.GuildID, event.Mentions[0].ID, COMMODORE_ROLE_ID)
+		sendMessage(event.ChannelID, fmt.Sprintf("Made %s a commodore.", targetMember.Nick))
+	}
 
 }
 
@@ -286,13 +288,11 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 
 	// check for members in same guild
 	guildMembers := GetMembers(event.GuildID)
-	leaderID := GetRoleID(event.GuildID, LEADER_NAME)
-	memberID := GetRoleID(event.GuildID, MEMBER_NAME)
 	var leader *discordgo.Member
 	// if none - add and make rep
 	for _, member := range guildMembers {
 		for _, role := range member.Roles {
-			if role == leaderID {
+			if role == LEADER_ROLE_ID {
 				if strings.HasPrefix(member.Nick, "["+tag+"]") {
 					leader = member
 				}
@@ -305,11 +305,11 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 		if err != nil {
 			log.Println(err)
 		}
-		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, memberID)
+		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, MEMBER_ROLE_ID)
 		if err != nil {
 			sendMessage(event.ChannelID, "couldn't change your nickname.")
 		}
-		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, leaderID)
+		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, LEADER_ROLE_ID)
 		if err != nil {
 			log.Println(err)
 		}
@@ -328,7 +328,7 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 		w.Handle("✅", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
 			// adding new user to alliance
 			session.GuildMemberNickname(event.GuildID, event.Author.ID, "["+tag+"] "+user)
-			session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, memberID)
+			session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, MEMBER_ROLE_ID)
 			// todo: confirm reps
 		})
 		w.Handle("", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
@@ -363,17 +363,4 @@ func IsDM(channel string) bool {
 		return false
 	}
 	return c.Type == discordgo.ChannelTypeDM
-}
-
-func GetRoleID(guild, name string) string {
-	roles, err := session.GuildRoles(guild)
-	if err != nil {
-		return ""
-	}
-	for _, role := range roles {
-		if role.Name == name {
-			return role.ID
-		}
-	}
-	return ""
 }
