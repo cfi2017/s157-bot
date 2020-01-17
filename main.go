@@ -18,6 +18,7 @@ const (
 	MemberRoleId    = "667160643014492182"
 	LeaderRoleId    = "666371711616417836"
 	CommodoreRoleId = "666737950985420802"
+	NameNotChanged  = "666986823662174228"
 )
 
 var (
@@ -442,6 +443,9 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 		if err != nil {
 			log.Println(err)
 		}
+		if HasRole(event.Member, NameNotChanged) {
+			session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, NameNotChanged)
+		}
 	} else {
 		sendMessage(event.ChannelID, "asking your representative for permission")
 		channel, err := session.UserChannelCreate(leader.User.ID)
@@ -467,6 +471,9 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 				logErr(func() error {
 					return session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, MemberRoleId)
 				})
+				if HasRole(event.Member, NameNotChanged) {
+					session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, NameNotChanged)
+				}
 			})
 		})
 
