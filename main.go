@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	MEMBER_ROLE_ID    = "667160643014492182"
-	LEADER_ROLE_ID    = "666371711616417836"
-	COMMODORE_ROLE_ID = "666737950985420802"
+	MemberRoleId    = "667160643014492182"
+	LeaderRoleId    = "666371711616417836"
+	CommodoreRoleId = "666737950985420802"
 )
 
 var (
@@ -57,22 +57,24 @@ func main() {
 	<-sc
 
 	// Cleanly close down the Discord session.
-	session.Close()
+	logErr(session.Close)
 
 }
 
-func onReady(s *discordgo.Session, event *discordgo.Ready) {
+func onReady(_ *discordgo.Session, _ *discordgo.Ready) {
 
 	// Set the playing status.
-	session.UpdateStatusComplex(discordgo.UpdateStatusData{
-		Game: &discordgo.Game{
-			Name: "!alliance",
-			Type: 2,
-		},
+	logErr(func() error {
+		return session.UpdateStatusComplex(discordgo.UpdateStatusData{
+			Game: &discordgo.Game{
+				Name: "!alliance",
+				Type: 2,
+			},
+		})
 	})
 }
 
-func onMessageCreate(s *discordgo.Session, event *discordgo.MessageCreate) {
+func onMessageCreate(_ *discordgo.Session, event *discordgo.MessageCreate) {
 	if event.WebhookID != "" {
 		return
 	}
@@ -101,9 +103,9 @@ func onMessageCreate(s *discordgo.Session, event *discordgo.MessageCreate) {
 
 }
 
-func onGuildLeave(s *discordgo.Session, event *discordgo.GuildMemberRemove) {
+func onGuildLeave(_ *discordgo.Session, event *discordgo.GuildMemberRemove) {
 	if event.Roles != nil {
-		if HasRole(event.Member, LEADER_ROLE_ID) {
+		if HasRole(event.Member, LeaderRoleId) {
 			// todo: send message to admins
 		}
 	}
@@ -137,11 +139,11 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 		leaveAlliance(event)
 		break
 	case "promote":
-		if len(args) != 2 {
+		if len(event.Mentions) == 0 {
 			sendMessage(event.ChannelID, "Please mention who you want to promote.")
 			return
 		}
-		promote(event, args[1])
+		promote(event)
 		break
 	default:
 		if len(args) == 0 {
@@ -164,10 +166,10 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 	}
 }
 
-func promote(event *discordgo.MessageCreate, s string) {
+func promote(event *discordgo.MessageCreate) {
 	// is rep?
 	event.Member.GuildID = event.GuildID
-	isLeader := HasRole(event.Member, LEADER_ROLE_ID)
+	isLeader := HasRole(event.Member, LeaderRoleId)
 	if !isLeader {
 		sendMessage(event.ChannelID, "You are not the representative of your alliance.")
 		return
@@ -181,7 +183,7 @@ func promote(event *discordgo.MessageCreate, s string) {
 	target := event.Mentions[0]
 	targetMember, _ := session.GuildMember(event.GuildID, target.ID)
 	targetMember.GuildID = event.GuildID
-	if !HasRole(targetMember, MEMBER_ROLE_ID) {
+	if !HasRole(targetMember, MemberRoleId) {
 		sendMessage(event.ChannelID, "Your target is not in an alliance.")
 		return
 	}
@@ -191,7 +193,7 @@ func promote(event *discordgo.MessageCreate, s string) {
 		return
 	}
 
-	if HasRole(targetMember, COMMODORE_ROLE_ID) {
+	if HasRole(targetMember, CommodoreRoleId) {
 
 		e := &discordgo.MessageEmbed{
 			Title:       "Authorising...",
@@ -202,20 +204,41 @@ func promote(event *discordgo.MessageCreate, s string) {
 		w.DeleteReactions = true
 		w.Timeout = time.Minute
 		w.UserWhitelist = []string{event.Author.ID}
-		w.Handle("✅", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
-			// adding new user to alliance
-			session.GuildMemberRoleAdd(event.GuildID, event.Mentions[0].ID, LEADER_ROLE_ID)
-			session.GuildMemberRoleRemove(event.GuildID, event.Mentions[0].ID, COMMODORE_ROLE_ID)
-			session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, LEADER_ROLE_ID)
-			sendMessage(event.ChannelID, fmt.Sprintf("Made %s the new alliance leader.", targetMember.Nick))
+
+		logErr(func() error {
+			return w.Handle("✅", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+				// adding new user to alliance
+				logErr(func() error {
+					return session.GuildMemberRoleAdd(event.GuildID, event.Mentions[0].ID, LeaderRoleId)
+				})
+
+				logErr(func() error {
+					return session.GuildMemberRoleRemove(event.GuildID, event.Mentions[0].ID, CommodoreRoleId)
+				})
+
+				logErr(func() error {
+					return session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, LeaderRoleId)
+				})
+				sendMessage(event.ChannelID, fmt.Sprintf("Made %s the new alliance leader.", targetMember.Nick))
+			})
 		})
-		w.Handle("", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
-			session.ChannelMessageDelete(reaction.ChannelID, reaction.MessageID)
-			sendMessage(event.ChannelID, "Cancelled that.")
+
+		logErr(func() error {
+			return w.Handle("", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+
+				logErr(func() error {
+					return session.ChannelMessageDelete(reaction.ChannelID, reaction.MessageID)
+				})
+				sendMessage(event.ChannelID, "Cancelled that.")
+			})
 		})
-		w.Spawn()
+
+		logErr(w.Spawn)
 	} else {
-		session.GuildMemberRoleAdd(event.GuildID, event.Mentions[0].ID, COMMODORE_ROLE_ID)
+
+		logErr(func() error {
+			return session.GuildMemberRoleAdd(event.GuildID, event.Mentions[0].ID, CommodoreRoleId)
+		})
 		sendMessage(event.ChannelID, fmt.Sprintf("Made %s a commodore.", targetMember.Nick))
 	}
 
@@ -248,27 +271,34 @@ func leaveAlliance(event *discordgo.MessageCreate) {
 		}
 		return
 	}
-	if !HasRole(event.Member, MEMBER_ROLE_ID) {
+	if !HasRole(event.Member, MemberRoleId) {
 		_, err = session.ChannelMessageSend(channel.ID, "You are not a member of any alliance.")
 		return
 	}
-	if HasRole(event.Member, LEADER_ROLE_ID) {
+	if HasRole(event.Member, LeaderRoleId) {
 		members := GetMembers(event.GuildID)
 		m := make([]*discordgo.Member, 0)
 		for _, member := range members {
 			for _, r := range member.Roles {
-				if r == MEMBER_ROLE_ID && strings.HasPrefix(member.Nick, strings.Split(event.Member.Nick, " ")[0]) && member.User.ID != event.Author.ID {
+				if r == MemberRoleId && strings.HasPrefix(member.Nick, strings.Split(event.Member.Nick, " ")[0]) && member.User.ID != event.Author.ID {
 					m = append(m, member)
 				}
 			}
 		}
 		if len(m) > 0 {
-			session.ChannelMessageSend(channel.ID, "Your current alliance has members. Promote someone before leaving.")
+
+			sendMessage(channel.ID, "Your current alliance has members. Promote someone before leaving.")
 			return
 		}
-		session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, LEADER_ROLE_ID)
+
+		logErr(func() error {
+			return session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, LeaderRoleId)
+		})
 	}
-	session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, MEMBER_ROLE_ID)
+
+	logErr(func() error {
+		return session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, MemberRoleId)
+	})
 	err = session.GuildMemberNickname(event.GuildID, event.Author.ID, strings.Split(event.Member.Nick, "] ")[1])
 	if err != nil {
 		sendMessage(event.ChannelID, "couldn't change your nickname.")
@@ -278,11 +308,11 @@ func leaveAlliance(event *discordgo.MessageCreate) {
 func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 	tag = strings.ToUpper(tag)
 	if IsDM(event.ChannelID) {
-		session.ChannelMessageSend(event.ChannelID, "Please use this command on a server.")
+		sendMessage(event.ChannelID, "Please use this command on a server.")
 		return
 	}
-	if HasRole(event.Member, MEMBER_ROLE_ID) {
-		session.ChannelMessageSend(event.ChannelID, "You are already in an alliance.")
+	if HasRole(event.Member, MemberRoleId) {
+		sendMessage(event.ChannelID, "You are already in an alliance.")
 		return
 	}
 
@@ -292,7 +322,7 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 	// if none - add and make rep
 	for _, member := range guildMembers {
 		for _, role := range member.Roles {
-			if role == LEADER_ROLE_ID {
+			if role == LeaderRoleId {
 				if strings.HasPrefix(member.Nick, "["+tag+"]") {
 					leader = member
 				}
@@ -305,19 +335,19 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 		if err != nil {
 			log.Println(err)
 		}
-		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, MEMBER_ROLE_ID)
+		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, MemberRoleId)
 		if err != nil {
 			sendMessage(event.ChannelID, "couldn't change your nickname.")
 		}
-		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, LEADER_ROLE_ID)
+		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, LeaderRoleId)
 		if err != nil {
 			log.Println(err)
 		}
 	} else {
-		session.ChannelMessageSend(event.ChannelID, "asking your representative for permission")
+		sendMessage(event.ChannelID, "asking your representative for permission")
 		channel, err := session.UserChannelCreate(leader.User.ID)
 		if err != nil {
-			session.ChannelMessageSend(event.ChannelID, "couldn't ask your rep. please contact an admin.")
+			sendMessage(event.ChannelID, "couldn't ask your rep. please contact an admin.")
 			return
 		}
 		e := &discordgo.MessageEmbed{
@@ -325,16 +355,29 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 		}
 
 		w := dgwidgets.NewWidget(session, channel.ID, e)
-		w.Handle("✅", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
-			// adding new user to alliance
-			session.GuildMemberNickname(event.GuildID, event.Author.ID, "["+tag+"] "+user)
-			session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, MEMBER_ROLE_ID)
-			// todo: confirm reps
+
+		logErr(func() error {
+			return w.Handle("✅", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+				// adding new user to alliance
+
+				logErr(func() error {
+					return session.GuildMemberNickname(event.GuildID, event.Author.ID, "["+tag+"] "+user)
+				})
+
+				logErr(func() error {
+					return session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, MemberRoleId)
+				})
+			})
 		})
-		w.Handle("", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
-			session.ChannelMessageDelete(reaction.ChannelID, reaction.MessageID)
+
+		logErr(func() error {
+			return w.Handle("", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+				logErr(func() error {
+					return session.ChannelMessageDelete(reaction.ChannelID, reaction.MessageID)
+				})
+			})
 		})
-		w.Spawn()
+		logErr(w.Spawn)
 
 	}
 
@@ -363,4 +406,10 @@ func IsDM(channel string) bool {
 		return false
 	}
 	return c.Type == discordgo.ChannelTypeDM
+}
+
+func logErr(some func() error) {
+	if err := some(); err != nil {
+		log.Println(err)
+	}
 }
