@@ -127,7 +127,7 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 !alliance leave -- leave an alliance
 !alliance setnick <nick> -- set your own nickname
 !alliance promote @username -- promote another user
-!alliance demote @username -- demote another user`+"```")
+!alliance demote @username -- demote (or kick) another user`+"```")
 		return
 	}
 
@@ -145,6 +145,13 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 			sendMessage(event.ChannelID, "Please specify your nickname")
 		}
 		setnick(event, args[1])
+		break
+	case "demote":
+		if len(event.Mentions) == 0 {
+			sendMessage(event.ChannelID, "Please mention who you want to promote.")
+			return
+		}
+		demote(event)
 		break
 	case "promote":
 		if len(event.Mentions) == 0 {
@@ -173,6 +180,79 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 	}
 }
 
+func demote(event *discordgo.MessageCreate) {
+	// is rep?
+	event.Member.GuildID = event.GuildID
+	isLeader := HasRole(event.Member, LeaderRoleId)
+	if !isLeader {
+		sendMessage(event.ChannelID, "You are not the representative of your alliance.")
+		return
+	}
+
+	if len(event.Mentions) != 1 {
+		sendMessage(event.ChannelID, "Please mention exactly one user.")
+		return
+	}
+	target := event.Mentions[0]
+	if target.ID == event.Author.ID {
+		sendMessage(event.ChannelID, "You cannot demote yourself.")
+		return
+	}
+	targetMember, _ := session.GuildMember(event.GuildID, target.ID)
+	if !HasRole(targetMember, MemberRoleId) {
+		sendMessage(event.ChannelID, "Your target is not in an alliance.")
+		return
+	}
+
+	if !strings.HasPrefix(targetMember.Nick, strings.Split(event.Member.Nick, " ")[0]) {
+		sendMessage(event.ChannelID, "Your target is not in the same alliance as you.")
+		return
+	}
+
+	if HasRole(targetMember, CommodoreRoleId) {
+		session.GuildMemberRoleRemove(event.GuildID, target.ID, CommodoreRoleId)
+		sendMessage(event.ChannelID, "User Demoted.")
+	} else {
+
+		e := &discordgo.MessageEmbed{
+			Title:       "Authorising...",
+			Description: fmt.Sprintf("Are you sure you want to kick %s?", targetMember.Nick),
+		}
+
+		w := dgwidgets.NewWidget(session, event.ChannelID, e)
+		w.DeleteReactions = true
+		w.Timeout = 1 * time.Minute
+		w.UserWhitelist = []string{event.Author.ID}
+
+		logErr(func() error {
+			return w.Handle("✅", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+				// adding new user to alliance
+				logErr(func() error {
+					return session.GuildMemberNickname(event.GuildID, event.Mentions[0].ID, strings.Split(event.Mentions[0].Username, " ")[1])
+				})
+
+				logErr(func() error {
+					return session.GuildMemberRoleRemove(event.GuildID, event.Mentions[0].ID, MemberRoleId)
+				})
+				sendMessage(event.ChannelID, fmt.Sprintf("Kicked %s.", targetMember.Nick))
+			})
+		})
+
+		logErr(func() error {
+			return w.Handle("❌", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+
+				logErr(func() error {
+					return session.ChannelMessageDelete(reaction.ChannelID, reaction.MessageID)
+				})
+				sendMessage(event.ChannelID, "Cancelled that.")
+			})
+		})
+
+		logErr(w.Spawn)
+	}
+
+}
+
 func setnick(event *discordgo.MessageCreate, nick string) {
 	if !HasRole(event.Member, MemberRoleId) {
 		session.GuildMemberNickname(event.GuildID, event.Author.ID, nick)
@@ -197,8 +277,11 @@ func promote(event *discordgo.MessageCreate) {
 	}
 
 	target := event.Mentions[0]
+	if target.ID == event.Author.ID {
+		sendMessage(event.ChannelID, "You cannot promote yourself.")
+		return
+	}
 	targetMember, _ := session.GuildMember(event.GuildID, target.ID)
-	targetMember.GuildID = event.GuildID
 	if !HasRole(targetMember, MemberRoleId) {
 		sendMessage(event.ChannelID, "Your target is not in an alliance.")
 		return
