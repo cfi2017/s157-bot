@@ -123,7 +123,7 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 
 	if len(args) < 1 {
 		sendMessage(event.ChannelID, `invalid command. example usages: `+"```"+`
-!alliance <tag> <username> -- join an alliance
+!alliance <tag> -- join an alliance
 !alliance leave -- leave an alliance
 !alliance promote @username -- make another person representative`+"```")
 		return
@@ -147,7 +147,7 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 		break
 	default:
 		if len(args) == 0 {
-			sendMessage(event.ChannelID, "invalid command. usage: !alliance <tag> <username>")
+			sendMessage(event.ChannelID, "invalid command. usage: !alliance <tag>")
 			return
 		}
 		if len(args[0]) > 4 {
@@ -158,11 +158,10 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 			joinAlliance(event, args[0], event.Author.Username)
 			return
 		}
-		if len(args) != 2 {
-			sendMessage(event.ChannelID, "invalid command. usage: !alliance <tag> <username>")
+		if len(args) > 1 {
+			sendMessage(event.ChannelID, "invalid command. usage: !alliance <tag>")
 			return
 		}
-		joinAlliance(event, args[0], args[1])
 	}
 }
 
