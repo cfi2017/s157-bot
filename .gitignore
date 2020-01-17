@@ -1,0 +1,5 @@
+*.rdb
+s157-bot
+*.exe
+bin/
+.idea
