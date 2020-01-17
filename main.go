@@ -251,7 +251,6 @@ func leaveAlliance(event *discordgo.MessageCreate) {
 		return
 	}
 	if HasRole(event.Member, LEADER_ROLE_ID) {
-		// todo: check for other alliance members
 		members := GetMembers(event.GuildID)
 		m := make([]*discordgo.Member, 0)
 		for _, member := range members {
