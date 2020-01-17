@@ -351,7 +351,8 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 			return
 		}
 		e := &discordgo.MessageEmbed{
-			Description: "Someone wants to join your alliance!",
+			Title:       "Someone wants to join your alliance!",
+			Description: fmt.Sprintf("%s wants to join your alliance.", event.Author.Username),
 		}
 
 		w := dgwidgets.NewWidget(session, channel.ID, e)
