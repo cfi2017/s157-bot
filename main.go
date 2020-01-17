@@ -144,6 +144,7 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 	case "setnick":
 		if len(args) != 2 {
 			sendMessage(event.ChannelID, "Please specify your nickname")
+			return
 		}
 		setnick(event, args[1])
 		break
