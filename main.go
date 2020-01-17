@@ -125,6 +125,7 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 		sendMessage(event.ChannelID, `invalid command. example usages: `+"```"+`
 !alliance <tag> -- join an alliance
 !alliance leave -- leave an alliance
+!alliance setnick <nick> -- set your own nickname
 !alliance promote @username -- make another person representative`+"```")
 		return
 	}
@@ -137,6 +138,12 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 	switch args[0] {
 	case "leave":
 		leaveAlliance(event)
+		break
+	case "setnick":
+		if len(args) != 2 {
+			sendMessage(event.ChannelID, "Please specify your nickname")
+		}
+		setnick(event, args[1])
 		break
 	case "promote":
 		if len(event.Mentions) == 0 {
@@ -163,6 +170,15 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 			return
 		}
 	}
+}
+
+func setnick(event *discordgo.MessageCreate, nick string) {
+	if !HasRole(event.Member, MemberRoleId) {
+		session.GuildMemberNickname(event.GuildID, event.Author.ID, nick)
+		return
+	}
+	tag := strings.Split(event.Member.Nick, " ")[0]
+	session.GuildMemberNickname(event.GuildID, event.Author.ID, tag+" "+nick)
 }
 
 func promote(event *discordgo.MessageCreate) {
