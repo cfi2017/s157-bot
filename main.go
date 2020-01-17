@@ -126,7 +126,8 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 !alliance <tag> -- join an alliance
 !alliance leave -- leave an alliance
 !alliance setnick <nick> -- set your own nickname
-!alliance promote @username -- make another person representative`+"```")
+!alliance promote @username -- promote another user
+!alliance demote @username -- demote another user`+"```")
 		return
 	}
 
