@@ -239,7 +239,7 @@ func promote(event *discordgo.MessageCreate) {
 		})
 
 		logErr(func() error {
-			return w.Handle("", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+			return w.Handle("❌", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
 
 				logErr(func() error {
 					return session.ChannelMessageDelete(reaction.ChannelID, reaction.MessageID)
@@ -387,7 +387,7 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 		})
 
 		logErr(func() error {
-			return w.Handle("", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+			return w.Handle("❌", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
 				logErr(func() error {
 					return session.ChannelMessageDelete(reaction.ChannelID, reaction.MessageID)
 				})
