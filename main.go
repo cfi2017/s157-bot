@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	MEMBER_NAME = "Alliance"
-	LEADER_NAME = "Representative"
+	MEMBER_ROLE_ID = ""
+	LEADER_ROLE_ID = ""
 )
 
 var (
@@ -83,8 +83,8 @@ func onMessageCreate(s *discordgo.Session, event *discordgo.MessageCreate) {
 		}
 
 		switch commands[0] {
-		case "guild":
-			handleGuildCommand(event, commands[1:])
+		case "alliance":
+			handleAllianceCommand(event, commands[1:])
 			break
 		default:
 			// sendMessage(event.ChannelID, "invalid command.")
@@ -118,7 +118,7 @@ func onGuildJoin(s *discordgo.Session, event *discordgo.GuildMemberAdd) {
 
 func onGuildLeave(s *discordgo.Session, event *discordgo.GuildMemberRemove) {
 	if event.Roles != nil {
-		if ok, _ := HasRole(event.Member, LEADER_NAME); ok {
+		if HasRole(event.Member, LEADER_ROLE_ID) {
 			// todo: send message to admins
 		}
 	}
@@ -139,13 +139,13 @@ func sendMessage(channelId string, message string) {
 	return
 }
 
-func handleGuildCommand(event *discordgo.MessageCreate, args []string) {
+func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 
 	if len(args) < 1 {
 		sendMessage(event.ChannelID, `invalid command. example usages: `+"```"+`
-!guild <tag> <username> -- join a guild
-!guild leave -- leave a guild
-!guild promote @username -- make another person representative`+"```")
+!alliance <tag> <username> -- join an alliance
+!alliance leave -- leave an alliance
+!alliance promote @username -- make another person representative`+"```")
 		return
 	}
 
@@ -156,7 +156,7 @@ func handleGuildCommand(event *discordgo.MessageCreate, args []string) {
 
 	switch args[0] {
 	case "leave":
-		leaveGuild(event)
+		leaveAlliance(event)
 		break
 	case "promote":
 		if len(args) != 2 {
@@ -167,7 +167,7 @@ func handleGuildCommand(event *discordgo.MessageCreate, args []string) {
 		break
 	default:
 		if len(args) == 0 {
-			sendMessage(event.ChannelID, "invalid command. usage: !guild <tag> <username>")
+			sendMessage(event.ChannelID, "invalid command. usage: !alliance <tag> <username>")
 			return
 		}
 		if len(args[0]) > 4 {
@@ -175,23 +175,23 @@ func handleGuildCommand(event *discordgo.MessageCreate, args []string) {
 			return
 		}
 		if len(args) == 1 {
-			joinGuild(event, args[0], event.Author.Username)
+			joinAlliance(event, args[0], event.Author.Username)
 			return
 		}
 		if len(args) != 2 {
-			sendMessage(event.ChannelID, "invalid command. usage: !guild <tag> <username>")
+			sendMessage(event.ChannelID, "invalid command. usage: !alliance <tag> <username>")
 			return
 		}
-		joinGuild(event, args[0], args[1])
+		joinAlliance(event, args[0], args[1])
 	}
 }
 
 func promote(event *discordgo.MessageCreate, s string) {
 	// is rep?
 	event.Member.GuildID = event.GuildID
-	guildLeader, leaderID := HasRole(event.Member, LEADER_NAME)
-	if !guildLeader {
-		sendMessage(event.ChannelID, "You are not the leader of your guild.")
+	isLeader := HasRole(event.Member, LEADER_ROLE_ID)
+	if !isLeader {
+		sendMessage(event.ChannelID, "You are not the representative of your alliance.")
 		return
 	}
 
@@ -203,29 +203,37 @@ func promote(event *discordgo.MessageCreate, s string) {
 	target := event.Mentions[0]
 	targetMember, _ := session.GuildMember(event.GuildID, target.ID)
 	targetMember.GuildID = event.GuildID
-	ok, _ := HasRole(targetMember, MEMBER_NAME)
-	if !ok {
-		sendMessage(event.ChannelID, "Your target is not in a guild.")
+	if !HasRole(targetMember, MEMBER_ROLE_ID) {
+		sendMessage(event.ChannelID, "Your target is not in an alliance.")
 		return
 	}
 
 	if !strings.HasPrefix(targetMember.Nick, strings.Split(event.Member.Nick, " ")[0]) {
-		sendMessage(event.ChannelID, "Your target is not in the same guild as you.")
+		sendMessage(event.ChannelID, "Your target is not in the same alliance as you.")
 		return
 	}
 
-	session.GuildMemberRoleAdd(event.GuildID, event.Mentions[0].ID, leaderID)
-	session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, leaderID)
+	session.GuildMemberRoleAdd(event.GuildID, event.Mentions[0].ID, LEADER_ROLE_ID)
+	session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, LEADER_ROLE_ID)
 	sendMessage(event.ChannelID, "Done.")
 
 }
 
+func HasRole(member *discordgo.Member, id string) bool {
+	for _, role := range member.Roles {
+		if role == id {
+			return true
+		}
+	}
+	return false
+}
+
 // if the message is a private message, error
-// if a user is not in a guild, error
+// if a user is not in an alliance, error
 // if a user is a representative, error and have them choose a different rep
-// if a user is the only guild member, remove any tags
+// if a user is the only alliance member, remove any tags
 // else remove any tags
-func leaveGuild(event *discordgo.MessageCreate) {
+func leaveAlliance(event *discordgo.MessageCreate) {
 	channel, err := session.Channel(event.ChannelID)
 	if err != nil {
 		log.Println(err)
@@ -238,25 +246,17 @@ func leaveGuild(event *discordgo.MessageCreate) {
 		}
 		return
 	}
-	gMember, err := session.GuildMember(event.GuildID, event.Author.ID)
-	if err != nil {
-		log.Println(err)
+	if !HasRole(event.Member, MEMBER_ROLE_ID) {
+		_, err = session.ChannelMessageSend(channel.ID, "You are not a member of any alliance.")
 		return
 	}
-	gMember.GuildID = event.GuildID
-	guildLeader, leaderID := HasRole(gMember, LEADER_NAME)
-	guildMember, memberID := HasRole(gMember, MEMBER_NAME)
-	if !guildMember {
-		_, err = session.ChannelMessageSend(channel.ID, "You are not a member of any guild.")
-		return
-	}
-	if guildLeader {
-		// todo: check for other guild members
+	if HasRole(event.Member, LEADER_ROLE_ID) {
+		// todo: check for other alliance members
 		members := GetMembers(event.GuildID)
 		m := make([]*discordgo.Member, 0)
 		for _, member := range members {
 			for _, r := range member.Roles {
-				if r == memberID && strings.HasPrefix(member.Nick, strings.Split(event.Member.Nick, " ")[0]) && member.User.ID != event.Author.ID {
+				if r == MEMBER_ROLE_ID && strings.HasPrefix(member.Nick, strings.Split(event.Member.Nick, " ")[0]) && member.User.ID != event.Author.ID {
 					m = append(m, member)
 				}
 			}
@@ -265,24 +265,22 @@ func leaveGuild(event *discordgo.MessageCreate) {
 			session.ChannelMessageSend(channel.ID, "Your current alliance has members. Promote someone before leaving.")
 			return
 		}
-		session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, leaderID)
+		session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, LEADER_ROLE_ID)
 	}
-	session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, memberID)
+	session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, MEMBER_ROLE_ID)
 	err = session.GuildMemberNickname(event.GuildID, event.Author.ID, strings.Split(event.Member.Nick, "] ")[1])
 	if err != nil {
 		sendMessage(event.ChannelID, "couldn't change your nickname.")
 	}
 }
 
-func joinGuild(event *discordgo.MessageCreate, tag, user string) {
+func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 	tag = strings.ToUpper(tag)
 	if IsDM(event.ChannelID) {
 		session.ChannelMessageSend(event.ChannelID, "Please use this command on a server.")
 		return
 	}
-	event.Member.GuildID = event.GuildID
-	hasMemberRole, _ := HasRole(event.Member, MEMBER_NAME)
-	if hasMemberRole {
+	if HasRole(event.Member, MEMBER_ROLE_ID) {
 		session.ChannelMessageSend(event.ChannelID, "You are already in an alliance.")
 		return
 	}
@@ -329,7 +327,7 @@ func joinGuild(event *discordgo.MessageCreate, tag, user string) {
 
 		w := dgwidgets.NewWidget(session, channel.ID, e)
 		w.Handle("✅", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
-			// adding new user to guild
+			// adding new user to alliance
 			session.GuildMemberNickname(event.GuildID, event.Author.ID, "["+tag+"] "+user)
 			session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, memberID)
 			// todo: confirm reps
@@ -379,25 +377,4 @@ func GetRoleID(guild, name string) string {
 		}
 	}
 	return ""
-}
-
-func HasRole(member *discordgo.Member, role string) (ok bool, rid string) {
-	g, err := session.Guild(member.GuildID)
-	if err != nil {
-		return false, ""
-	}
-	for _, r := range g.Roles {
-		if r.Name == role {
-			rid = r.ID
-		}
-	}
-	if rid == "" {
-		return
-	}
-	for _, r := range member.Roles {
-		if r == rid {
-			return true, r
-		}
-	}
-	return false, rid
 }
