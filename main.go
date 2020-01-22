@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -10,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Necroforger/dgwidgets"
 	"github.com/bwmarrin/discordgo"
+	"github.com/cfi2017/dgwidgets"
 )
 
 const (
@@ -224,6 +225,7 @@ func demote(event *discordgo.MessageCreate) {
 		w := dgwidgets.NewWidget(session, event.ChannelID, e)
 		w.DeleteReactions = true
 		w.Timeout = 1 * time.Minute
+		w.DeleteOnTimeout = true
 		w.UserWhitelist = []string{event.Author.ID}
 
 		logErr(func() error {
@@ -250,7 +252,10 @@ func demote(event *discordgo.MessageCreate) {
 			})
 		})
 
-		logErr(w.Spawn)
+		err := w.Spawn()
+		if err != nil && err == context.DeadlineExceeded {
+			sendMessage(event.ChannelID, "Timed out.")
+		}
 	}
 
 }
