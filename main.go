@@ -462,6 +462,7 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 				sendMessage(event.ChannelID, "Could not remove redundant role.")
 			}
 		}
+		sendMessage(event.ChannelID, "You are the first person to join this guild. Welcome, admiral.")
 	} else {
 		sendMessage(event.ChannelID, "asking your representative for permission")
 		channel, err := session.UserChannelCreate(leader.User.ID)
