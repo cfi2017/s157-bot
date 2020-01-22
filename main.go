@@ -97,9 +97,6 @@ func onMessageCreate(_ *discordgo.Session, event *discordgo.MessageCreate) {
 		case "alliance":
 			handleAllianceCommand(event, commands[1:])
 			break
-		default:
-			// sendMessage(event.ChannelID, "invalid command.")
-			return
 		}
 
 	}
