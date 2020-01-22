@@ -106,7 +106,6 @@ func onMessageCreate(_ *discordgo.Session, event *discordgo.MessageCreate) {
 func onGuildLeave(_ *discordgo.Session, event *discordgo.GuildMemberRemove) {
 	if event.Roles != nil {
 		if HasRole(event.Member, LeaderRoleId) {
-			// todo: send message to admins
 			sendMessage(ChannelAdmin,
 				fmt.Sprintf("[warning]: Representative %s has left the discord guild. Please assign a new representative manually.", event.Nick))
 		}
