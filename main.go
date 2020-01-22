@@ -25,7 +25,7 @@ const (
 	LeaderRoleId            = "666371711616417836"
 	CommodoreRoleId         = "666737950985420802"
 	NameNotChanged          = "666986823662174228"
-	NewsChannelId           = "667833607615676457" // "667300349110911008"
+	NewsChannelId           = "667300349110911008"
 	ServerNewsQueueId       = "669565978044268554"
 	GameNewsQueueId         = "669566515322028045"
 	GameNewsRoleId          = "669566606472511488"
