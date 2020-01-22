@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -24,9 +26,10 @@ const (
 )
 
 var (
-	token   = flag.String("token", "", "bot token")
-	fPrefix = flag.String("p", "!", "bot prefix")
-	session *discordgo.Session
+	token     = flag.String("token", "", "bot token")
+	fPrefix   = flag.String("p", "!", "bot prefix")
+	session   *discordgo.Session
+	ErrNoData = errors.New("no such error")
 )
 
 /*
@@ -46,6 +49,43 @@ func main() {
 	session.AddHandlerOnce(onReady)
 	session.AddHandler(onMessageCreate)
 	session.AddHandler(onGuildLeave)
+
+	state, err := GetGuildState("665976752992157706")
+	if err != nil {
+		panic(err)
+	}
+	for _, prompt := range state.RolePrompts {
+		w := &dgwidgets.Widget{
+			Keys: []string{
+				prompt.Emote,
+			},
+			Handlers: map[string]dgwidgets.WidgetHandler{
+				prompt.Emote: func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+					s := widget.Ses
+					member, err := s.GuildMember(prompt.GuildID, reaction.UserID)
+					if err != nil {
+						log.Println(err)
+						return
+					}
+					if HasRole(member, prompt.RoleID) {
+						err = s.GuildMemberRoleRemove(prompt.GuildID, reaction.UserID, prompt.RoleID)
+					} else {
+						err = s.GuildMemberRoleAdd(prompt.GuildID, reaction.UserID, prompt.RoleID)
+					}
+					if err != nil {
+						log.Println(err)
+					}
+				},
+			},
+			DeleteReactions: true,
+		}
+		go func() {
+			err = w.Hook(session, prompt.ChannelID, prompt.MessageID)
+			if err != nil {
+				sendMessage(prompt.ChannelID, "Could not hook widget.")
+			}
+		}()
+	}
 
 	// open websocket
 	err = session.Open()
@@ -364,6 +404,83 @@ func HasRole(member *discordgo.Member, id string) bool {
 		}
 	}
 	return false
+}
+
+type PendingRequest struct {
+	ChannelID        string
+	RepresentativeID string
+	TargetID         string
+	GuildID          string
+	AllianceTag      string
+	MessageID        string
+	CreatedAt        time.Time
+}
+
+type RolePrompt struct {
+	ChannelID string
+	MessageID string
+	RoleID    string
+	GuildID   string
+	Emote     string
+}
+
+type GuildState struct {
+	PendingRequests []PendingRequest
+	RolePrompts     []RolePrompt
+}
+
+func GetGuildState(guild string) (state GuildState, err error) {
+	msg, err := FindStateMessage(guild)
+	if err != nil { // no state message
+		return GuildState{}, nil
+	}
+	err = json.Unmarshal([]byte(msg.Content), &state)
+	return
+}
+
+func SetGuildState(guild string, state GuildState) error {
+	b, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	msg, err := FindStateMessage(guild)
+	if err != nil || msg.Author.ID != session.State.User.ID {
+		// create new message
+		if msg == nil {
+			return err
+		}
+		_, err := session.ChannelMessageSend(msg.ChannelID, string(b))
+		return err
+	} else {
+		// update existing message
+		_, err := session.ChannelMessageEdit(msg.ChannelID, msg.ID, string(b))
+		return err
+	}
+}
+
+func FindStateMessage(guild string) (*discordgo.Message, error) {
+	channel, err := FindChannel(guild, "_data")
+	if err != nil {
+		return nil, err
+	}
+	msg, err := session.ChannelMessage(channel.ID, channel.LastMessageID)
+	if err != nil {
+		return &discordgo.Message{ChannelID: channel.ID}, ErrNoData
+	}
+	return msg, nil
+}
+
+func FindChannel(guild, name string) (*discordgo.Channel, error) {
+	channels, err := session.GuildChannels(guild)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range channels {
+		if c.Name == name {
+			return c, nil
+		}
+	}
+	return session.GuildChannelCreate(guild, "_data", discordgo.ChannelTypeGuildText)
 }
 
 // if the message is a private message, error
