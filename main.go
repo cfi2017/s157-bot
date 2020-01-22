@@ -124,7 +124,7 @@ func sendMessage(channelId string, message string) {
 func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 
 	if len(args) < 1 {
-		sendMessage(event.ChannelID, `invalid command. example usages: `+"```"+`
+		sendMessage(event.ChannelID, `usage: `+"```"+`
 !alliance <tag> -- join an alliance
 !alliance leave -- leave an alliance
 !alliance setnick <nick> -- set your own nickname
