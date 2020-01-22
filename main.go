@@ -20,6 +20,7 @@ const (
 	LeaderRoleId    = "666371711616417836"
 	CommodoreRoleId = "666737950985420802"
 	NameNotChanged  = "666986823662174228"
+	ChannelAdmin    = "666274224565911571"
 )
 
 var (
@@ -109,6 +110,8 @@ func onGuildLeave(_ *discordgo.Session, event *discordgo.GuildMemberRemove) {
 	if event.Roles != nil {
 		if HasRole(event.Member, LeaderRoleId) {
 			// todo: send message to admins
+			sendMessage(ChannelAdmin,
+				fmt.Sprintf("[warning]: Representative %s has left the discord guild. Please assign a new representative manually.", event.Nick))
 		}
 	}
 }
