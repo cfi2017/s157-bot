@@ -212,8 +212,12 @@ func demote(event *discordgo.MessageCreate) {
 	}
 
 	if HasRole(targetMember, CommodoreRoleId) {
-		session.GuildMemberRoleRemove(event.GuildID, target.ID, CommodoreRoleId)
-		sendMessage(event.ChannelID, "User Demoted.")
+		err := session.GuildMemberRoleRemove(event.GuildID, target.ID, CommodoreRoleId)
+		if err != nil {
+			sendMessage(event.ChannelID, "Could not demote user. No permission to remove role.")
+		} else {
+			sendMessage(event.ChannelID, "User Demoted.")
+		}
 	} else {
 
 		e := &discordgo.MessageEmbed{
@@ -260,12 +264,16 @@ func demote(event *discordgo.MessageCreate) {
 }
 
 func setnick(event *discordgo.MessageCreate, nick string) {
+	var err error
 	if !HasRole(event.Member, MemberRoleId) {
-		session.GuildMemberNickname(event.GuildID, event.Author.ID, nick)
-		return
+		err = session.GuildMemberNickname(event.GuildID, event.Author.ID, nick)
+	} else {
+		tag := strings.Split(event.Member.Nick, " ")[0]
+		err = session.GuildMemberNickname(event.GuildID, event.Author.ID, tag+" "+nick)
 	}
-	tag := strings.Split(event.Member.Nick, " ")[0]
-	session.GuildMemberNickname(event.GuildID, event.Author.ID, tag+" "+nick)
+	if err != nil {
+		sendMessage(event.ChannelID, "Could not set nickname. Unhandled exception.")
+	}
 }
 
 func promote(event *discordgo.MessageCreate) {
@@ -449,7 +457,10 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 			log.Println(err)
 		}
 		if HasRole(event.Member, NameNotChanged) {
-			session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, NameNotChanged)
+			err = session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, NameNotChanged)
+			if err != nil {
+				sendMessage(event.ChannelID, "Could not remove redundant role.")
+			}
 		}
 	} else {
 		sendMessage(event.ChannelID, "asking your representative for permission")
@@ -477,7 +488,10 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 					return session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, MemberRoleId)
 				})
 				if HasRole(event.Member, NameNotChanged) {
-					session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, NameNotChanged)
+					err = session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, NameNotChanged)
+					if err != nil {
+						sendMessage(event.ChannelID, "Could not remove role.")
+					}
 				}
 			})
 		})
