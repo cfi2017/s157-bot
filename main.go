@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
@@ -18,11 +19,18 @@ import (
 )
 
 const (
-	MemberRoleId    = "667160643014492182"
-	LeaderRoleId    = "666371711616417836"
-	CommodoreRoleId = "666737950985420802"
-	NameNotChanged  = "666986823662174228"
-	ChannelAdmin    = "666274224565911571"
+	BotOwnerId              = "135468266695950336"
+	MemberRoleId            = "667160643014492182"
+	LeaderRoleId            = "666371711616417836"
+	CommodoreRoleId         = "666737950985420802"
+	NameNotChanged          = "666986823662174228"
+	NewsChannelId           = "667833607615676457" // "667300349110911008"
+	ServerNewsQueueId       = "669565978044268554"
+	GameNewsQueueId         = "669566515322028045"
+	GameNewsRoleId          = "669566606472511488"
+	ServerNewsRoleId        = "669560894774181908"
+	ChannelAdmin            = "666274224565911571"
+	CrawAssignmentChannelId = "667716602610974740"
 )
 
 var (
@@ -82,7 +90,7 @@ func main() {
 		go func() {
 			err = w.Hook(session, prompt.ChannelID, prompt.MessageID)
 			if err != nil {
-				sendMessage(prompt.ChannelID, "Could not hook widget.")
+				sendMessage(prompt.ChannelID, fmt.Sprintf("Could not hook widget: %s.", err.Error()))
 			}
 		}()
 	}
@@ -125,6 +133,43 @@ func onMessageCreate(_ *discordgo.Session, event *discordgo.MessageCreate) {
 		return
 	}
 
+	if !strings.HasPrefix(event.Content, "IGNORE") {
+		var roleId string
+		if event.ChannelID == GameNewsQueueId {
+			roleId = GameNewsRoleId
+		} else if event.ChannelID == ServerNewsQueueId {
+			roleId = ServerNewsRoleId
+		}
+		if roleId != "" {
+			roles, _ := session.GuildRoles(event.GuildID)
+			var role *discordgo.Role
+			for _, r := range roles {
+				if r.ID == roleId {
+					role = r
+				}
+			}
+			if role == nil {
+				return
+			}
+
+			role, err := session.GuildRoleEdit(event.GuildID, role.ID, role.Name, role.Color, role.Hoist, role.Permissions, true)
+			if err != nil {
+				sendMessage(event.ChannelID, err.Error())
+				return
+			}
+			_, err = session.ChannelMessageSend(NewsChannelId, fmt.Sprintf("%s\n\n%s", role.Mention(), event.Content))
+			if err != nil {
+				sendMessage(event.ChannelID, err.Error())
+				return
+			}
+			_, err = session.GuildRoleEdit(event.GuildID, role.ID, role.Name, role.Color, role.Hoist, role.Permissions, false)
+			if err != nil {
+				sendMessage(event.ChannelID, err.Error())
+				return
+			}
+		}
+	}
+
 	// is command?
 	if strings.HasPrefix(strings.TrimSpace(event.Content), *fPrefix) {
 		commands := strings.Split(strings.TrimPrefix(strings.TrimSpace(event.Content), *fPrefix), " ")
@@ -134,6 +179,9 @@ func onMessageCreate(_ *discordgo.Session, event *discordgo.MessageCreate) {
 		}
 
 		switch commands[0] {
+		case "role":
+			handleRoleCommand(event, commands[1:])
+			break
 		case "alliance":
 			handleAllianceCommand(event, commands[1:])
 			break
@@ -161,6 +209,9 @@ func sendMessage(channelId string, message string) {
 }
 
 func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
+	if event.ChannelID != CrawAssignmentChannelId {
+		return
+	}
 
 	if len(args) < 1 {
 		sendMessage(event.ChannelID, `usage: `+"```"+`
@@ -219,6 +270,115 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 			sendMessage(event.ChannelID, "invalid command. usage: !alliance <tag>")
 			return
 		}
+	}
+}
+
+func handleRoleCommand(event *discordgo.MessageCreate, args []string) {
+	if event.Author.ID != BotOwnerId {
+		return
+	}
+
+	if len(args) < 2 {
+		sendMessage(event.ChannelID, `usage: `+"```"+`
+!role prompt create <channel> <role> <message> -- prompt for a role
+!role prompt delete <id> -- delete a role prompt
+!role prompt update <id> <message>
+`+"```")
+		return
+	}
+
+	if IsDM(event.ChannelID) {
+		sendMessage(event.ChannelID, "this can only be run on a server.")
+		return
+	}
+
+	switch args[1] {
+	case "create":
+		if len(args) < 5 {
+			sendMessage(event.ChannelID, `usage: `+"```"+`
+!role prompt create <channel> <role> <message> -- prompt for a role
+`+"```")
+			return
+		}
+
+		createRolePrompt(event, args[2], args[3], strings.Join(args[4:], " "))
+		break
+	}
+
+}
+
+func createRolePrompt(event *discordgo.MessageCreate, channelID, roleID, message string) {
+	state, err := GetGuildState(event.GuildID)
+	if err != nil {
+		sendMessage(event.ChannelID, err.Error())
+		return
+	}
+
+	roles, err := session.GuildRoles(event.GuildID)
+	if err != nil {
+		sendMessage(event.ChannelID, err.Error())
+		return
+	}
+
+	var role discordgo.Role
+	for _, r := range roles {
+		if r.ID == roleID {
+			role = *r
+		}
+	}
+
+	rp := RolePrompt{
+		ChannelID: channelID,
+		MessageID: "",
+		RoleID:    roleID,
+		GuildID:   event.GuildID,
+		Emote:     "✅",
+	}
+	rand.Seed(time.Now().UnixNano())
+
+	bot, _ := session.GuildMember(event.GuildID, session.State.User.ID)
+	name := bot.User.Username
+	if bot.Nick != "" {
+		name = bot.Nick
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("Toggle %s", role.Name),
+		Description: "Click the below emote to give yourself this role.",
+		Color:       int((((rand.Int31n(255) << 8) + rand.Int31n(255)) << 8) + (rand.Int31n(255))),
+		Timestamp:   time.Now().Format(time.RFC3339),
+		Author:      &discordgo.MessageEmbedAuthor{Name: name},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "s157-bot",
+		},
+	}
+	wg := dgwidgets.NewWidget(session, channelID, embed)
+	wg.DeleteReactions = true
+	wg.Handle("✅", func(widget *dgwidgets.Widget, reaction *discordgo.MessageReaction) {
+		s := widget.Ses
+		member, err := s.GuildMember(rp.GuildID, reaction.UserID)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		if HasRole(member, rp.RoleID) {
+			err = s.GuildMemberRoleRemove(rp.GuildID, reaction.UserID, rp.RoleID)
+		} else {
+			err = s.GuildMemberRoleAdd(rp.GuildID, reaction.UserID, rp.RoleID)
+		}
+		if err != nil {
+			log.Println(err)
+		}
+	})
+	go wg.Spawn()
+	for wg.Message == nil {
+		time.Sleep(200 * time.Millisecond)
+	} // wait for message to be sent
+	rp.MessageID = wg.Message.ID
+	state.RolePrompts = append(state.RolePrompts, rp)
+	err = SetGuildState(event.GuildID, state)
+	if err != nil {
+		sendMessage(event.ChannelID, err.Error())
 	}
 }
 
