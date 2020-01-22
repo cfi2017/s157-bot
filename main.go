@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/cfi2017/dgwidgets"
@@ -258,7 +259,7 @@ func handleAllianceCommand(event *discordgo.MessageCreate, args []string) {
 			sendMessage(event.ChannelID, "invalid command. usage: !alliance <tag>")
 			return
 		}
-		if len(args[0]) > 4 {
+		if utf8.RuneCountInString(args[0]) > 4 {
 			sendMessage(event.ChannelID, "your alliance tag must be at most four characters")
 			return
 		}
@@ -723,15 +724,19 @@ func joinAlliance(event *discordgo.MessageCreate, tag, user string) {
 		// add and make rep
 		err := session.GuildMemberNickname(event.GuildID, event.Author.ID, "["+tag+"] "+user)
 		if err != nil {
+			sendMessage(event.ChannelID, "couldn't change your nickname. aborting.")
 			log.Println(err)
+			return
 		}
 		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, MemberRoleId)
 		if err != nil {
-			sendMessage(event.ChannelID, "couldn't change your nickname.")
+			log.Println(err)
+			sendMessage(event.ChannelID, "couldn't give you the alliance role.")
 		}
 		err = session.GuildMemberRoleAdd(event.GuildID, event.Author.ID, LeaderRoleId)
 		if err != nil {
 			log.Println(err)
+			sendMessage(event.ChannelID, "couldn't give you the alliance leader role.")
 		}
 		if HasRole(event.Member, NameNotChanged) {
 			err = session.GuildMemberRoleRemove(event.GuildID, event.Author.ID, NameNotChanged)
