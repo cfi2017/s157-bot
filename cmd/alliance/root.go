@@ -17,15 +17,15 @@ func RootCmdFactory(s *discordgo.Session, e *discordgo.MessageCreate) *cobra.Com
 	cmd := &cobra.Command{
 		Use:   "alliance",
 		Short: "Alliance related commands.",
-		Long:  `Returns the bots gateway ping.`,
+		Long:  `Manages alliance members.`,
 		Example: `
-!alliance <tag> -- join an alliance
+` + "```" + `!alliance <tag> -- join an alliance
 !alliance leave -- leave an alliance
 !alliance setnick <nick> -- set your own nickname
 !alliance promote @username -- promote another user
 !alliance demote @username -- demote (or kick) another user
 !alliance kick @username
-`,
+` + "```",
 		Args: cobra.ExactArgs(1),
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if e.ChannelID != internal.CrewAssignmentChannelId {
