@@ -52,7 +52,7 @@ func main() {
 	// open websocket
 	err = session.Open()
 	if err != nil {
-		fmt.Println("Error opening Discord session: ", err)
+		log.Fatal("Error opening Discord session: ", err)
 	}
 
 	// Wait here until CTRL-C or other term signal is received.
